@@ -1,13 +1,347 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>サンプルHTMLページ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circler</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f3f4f6;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .controls {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            text-align: center;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 1200px;
+        }
+
+        .circler-container {
+            position: relative;
+            max-width: 100%; 
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .base-image {
+            display: block;
+            width: 100%;
+            height: auto;
+            z-index: 1;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            cursor: crosshair;
+        }
+
+        button {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            background-color: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background-color: #f9fafb;
+            border-color: #9ca3af;
+        }
+        
+        #downloadBtn {
+            background-color: #10b981;
+            color: white;
+            border-color: #059669;
+        }
+
+        #downloadBtn:hover {
+            background-color: #059669;
+        }
+
+        input[type="file"] {
+            font-size: 14px;
+            max-width: 200px;
+        }
+
+        button.active-toggle {
+            background-color: #dbeafe;
+            border-color: #3b82f6;
+            color: #1d4ed8;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            border-right: 2px solid #e5e7eb;
+            padding-right: 15px;
+        }
+
+        .control-group:last-child {
+            border-right: none;
+            padding-right: 0;
+        }
+
+        .color-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid #9ca3af;
+            padding: 0;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .color-btn:hover {
+            transform: scale(1.15);
+        }
+
+        input[type="color"] {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: none;
+        }
+    </style>
 </head>
 <body>
-    <h1>ようこそ！</h1>
-    <p>これはサンプルのHTMLページです。</p>
-    <h2>画像の埋め込み</h2>
-    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2YxsboDETVlrnhZwUN-Hja5fqmHv0343vLHH2HJkdng&s=10" alt="サンプル画像" width="300">
+
+    <div class="controls">
+        <input type="file" id="imageUpload" accept="image/png, image/jpeg, image/webp">
+        
+        <div class="control-group">
+            <label>Color:</label>
+            <button class="color-btn" data-color="#ff8c00" style="background-color: #ff8c00;" title="Orange"></button>
+            <button class="color-btn" data-color="#06b6d4" style="background-color: #06b6d4;" title="Cyan"></button>
+            <button class="color-btn" data-color="#111827" style="background-color: #111827;" title="Black"></button>
+            <button class="color-btn" data-color="#ffffff" style="background-color: #ffffff;" title="White"></button>
+            <input type="color" id="customColorPicker" value="#ff8c00" title="Custom Color Palette">
+        </div>
+
+        <div class="control-group">
+            <label for="sizeSlider">Size:</label>
+            <input type="range" id="sizeSlider" min="10" max="200" value="45">
+            <span id="sizeReadout">45px</span>
+        </div>
+        
+        <div class="control-group" style="border:none;">
+            <button id="toggleDragModeBtn" class="active-toggle">Disable Drag to Draw</button>
+            <button id="togglePreviewBtn" class="active-toggle">Disable Hover Preview</button>
+            <button id="undoBtn">Undo</button>
+            <button id="resetBtn">Reset</button>
+            <button id="downloadBtn">Download Image</button>
+        </div>
+    </div>
+
+    <div class="circler-container">
+        <img id="baseImage" class="base-image" src="assets/images.jpg" alt="Base Layer">
+        <canvas id="overlayCanvas"></canvas>
+    </div>
+
+    <script>
+        const baseImg = document.getElementById('baseImage');
+        const canvas = document.getElementById('overlayCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const imageUpload = document.getElementById('imageUpload');
+        const toggleDragModeBtn = document.getElementById('toggleDragModeBtn');
+        const togglePreviewBtn = document.getElementById('togglePreviewBtn');
+        const undoBtn = document.getElementById('undoBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const sizeSlider = document.getElementById('sizeSlider');
+        const sizeReadout = document.getElementById('sizeReadout');
+        const colorBtns = document.querySelectorAll('.color-btn');
+        const customColorPicker = document.getElementById('customColorPicker');
+        
+        let currentOverlayColor = '#ff8c00'; 
+        let circlesHistory = [];
+        let isDragModeActive = true; 
+        let isPreviewActive = true; 
+        let isDrawing = false; 
+        let isMouseOver = false;     
+        let mouseX = 0;
+        let mouseY = 0;
+
+        function setupCanvasDimensions() {
+            canvas.width = baseImg.naturalWidth;
+            canvas.height = baseImg.naturalHeight;
+            redraw();
+        }
+
+        function redraw() {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = currentOverlayColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.globalCompositeOperation = 'destination-out';
+            const currentRadius = parseInt(sizeSlider.value, 10);
+
+            circlesHistory.forEach(stroke => {
+                stroke.forEach(circle => {
+                    ctx.beginPath();
+                    ctx.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            });
+
+            if (isPreviewActive && isMouseOver && !isDrawing) {
+                ctx.beginPath();
+                ctx.arc(mouseX, mouseY, currentRadius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        baseImg.onload = setupCanvasDimensions;
+        if (baseImg.complete && baseImg.naturalWidth > 0) setupCanvasDimensions();
+
+        imageUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const objectURL = URL.createObjectURL(file);
+                circlesHistory = [];
+                baseImg.src = objectURL;
+            }
+        });
+
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const selectedColor = e.target.getAttribute('data-color');
+                currentOverlayColor = selectedColor;
+                customColorPicker.value = selectedColor; 
+                redraw();
+            });
+        });
+
+        customColorPicker.addEventListener('input', (e) => {
+            currentOverlayColor = e.target.value;
+            redraw();
+        });
+
+        sizeSlider.addEventListener('input', (e) => {
+            sizeReadout.textContent = e.target.value + 'px';
+            redraw(); 
+        });
+
+        toggleDragModeBtn.addEventListener('click', () => {
+            isDragModeActive = !isDragModeActive; 
+            if (isDragModeActive) {
+                toggleDragModeBtn.textContent = 'Disable Drag to Draw';
+                toggleDragModeBtn.classList.add('active-toggle');
+            } else {
+                toggleDragModeBtn.textContent = 'Enable Drag to Draw';
+                toggleDragModeBtn.classList.remove('active-toggle');
+            }
+        });
+
+        togglePreviewBtn.addEventListener('click', () => {
+            isPreviewActive = !isPreviewActive; 
+            if (isPreviewActive) {
+                togglePreviewBtn.textContent = 'Disable Hover Preview';
+                togglePreviewBtn.classList.add('active-toggle');
+            } else {
+                togglePreviewBtn.textContent = 'Enable Hover Preview';
+                togglePreviewBtn.classList.remove('active-toggle');
+            }
+            redraw();
+        });
+
+        canvas.addEventListener('mousedown', (event) => {
+            if (event.button !== 0) return;
+            isDrawing = true;
+            const currentRadius = parseInt(sizeSlider.value, 10);
+            circlesHistory.push([{ x: mouseX, y: mouseY, radius: currentRadius }]);
+            redraw();
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = ((event.clientX - rect.left) / rect.width) * canvas.width;
+            mouseY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+            
+            if (isDrawing && isDragModeActive) {
+                const currentRadius = parseInt(sizeSlider.value, 10);
+                circlesHistory[circlesHistory.length - 1].push({ x: mouseX, y: mouseY, radius: currentRadius });
+            }
+            
+            if (isPreviewActive || (isDrawing && isDragModeActive)) redraw();
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('mouseenter', () => { isMouseOver = true; });
+        
+        canvas.addEventListener('mouseleave', () => { 
+            isMouseOver = false;
+            isDrawing = false;
+            if (isPreviewActive) redraw();
+        });
+
+        undoBtn.addEventListener('click', () => {
+            if (circlesHistory.length > 0) {
+                circlesHistory.pop();
+                redraw();
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            circlesHistory = [];
+            redraw();
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            tempCtx.drawImage(baseImg, 0, 0, tempCanvas.width, tempCanvas.height);
+            tempCtx.drawImage(canvas, 0, 0);
+
+            const dataURL = tempCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = 'circler.png';
+            link.href = dataURL;
+            link.click();
+        });
+
+        canvas.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+        });
+    </script>
+
 </body>
 </html>
